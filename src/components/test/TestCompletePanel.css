@@ -1,0 +1,26 @@
+.complete-panel {
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+}
+
+.complete-panel__icon {
+  font-size: 3rem;
+  margin-bottom: var(--space-4);
+}
+
+.complete-panel__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: var(--space-2);
+}
+
+.complete-panel__subtitle {
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-6);
+}
+
+.complete-panel__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}

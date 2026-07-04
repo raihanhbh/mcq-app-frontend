@@ -1,0 +1,124 @@
+name: Deploy Frontend
+
+# GCP auth: repo variables or hardcoded defaults below (same WIF pool as backend/infra).
+# Optional overrides — Settings → Secrets and variables → Actions → Variables:
+#   GCP_WORKLOAD_IDENTITY_PROVIDER
+#   GCP_SERVICE_ACCOUNT
+#
+# Build-time config — Settings → Secrets and variables → Actions → Secrets (or Variables):
+#   VITE_API_BASE_URL, VITE_FIREBASE_API_KEY, VITE_FIREBASE_AUTH_DOMAIN,
+#   VITE_FIREBASE_PROJECT_ID, VITE_FIREBASE_APP_ID
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: frontend-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PROJECT_ID: topicmastery-core-2026
+  NODE_VERSION: "22"
+  # Defaults from: cd mcq-app-infra && terraform output -raw <name>
+  DEFAULT_WORKLOAD_IDENTITY_PROVIDER: projects/1002336514728/locations/global/workloadIdentityPools/topicmastery-github-pool/providers/github-provider
+  DEFAULT_GCP_SERVICE_ACCOUNT: topicmastery-github-frontend@topicmastery-core-2026.iam.gserviceaccount.com
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+
+      - name: Upload dist artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 1
+
+  deploy:
+    name: Deploy
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Resolve GCP auth configuration
+        id: gcp_config
+        run: |
+          WIP="${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}"
+          SA="${{ vars.GCP_SERVICE_ACCOUNT }}"
+          if [ -z "$WIP" ]; then WIP="${{ env.DEFAULT_WORKLOAD_IDENTITY_PROVIDER }}"; fi
+          if [ -z "$SA" ]; then SA="${{ env.DEFAULT_GCP_SERVICE_ACCOUNT }}"; fi
+          if [ -z "$WIP" ] || [ -z "$SA" ]; then
+            echo "::error::GCP auth config missing. Set repo variables GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_SERVICE_ACCOUNT, or update DEFAULT_* values in deploy.yml."
+            exit 1
+          fi
+          echo "workload_identity_provider=${WIP}" >> "$GITHUB_OUTPUT"
+          echo "service_account=${SA}" >> "$GITHUB_OUTPUT"
+          echo "Resolved WIF provider and service account for deploy"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ steps.gcp_config.outputs.workload_identity_provider }}
+          service_account: ${{ steps.gcp_config.outputs.service_account }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Firebase Hosting
+        run: npx firebase-tools@14.3.1 deploy --only hosting --project "${{ env.PROJECT_ID }}" --non-interactive
+
+      - name: Verify deployment
+        run: |
+          URL="https://${{ env.PROJECT_ID }}.web.app"
+          echo "Hosting URL: ${URL}"
+          for i in 1 2 3 4 5; do
+            if curl -sf "${URL}" | grep -q '<div id="root">'; then
+              echo "Hosting smoke check passed"
+              exit 0
+            fi
+            echo "Attempt ${i} failed, retrying..."
+            sleep 5
+          done
+          echo "Hosting smoke check failed"
+          exit 1

@@ -1,0 +1,17 @@
+.error-banner {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-error-bg);
+  color: var(--color-error);
+  border-radius: var(--radius-md);
+  font-size: 0.9375rem;
+}
+
+.error-banner--warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.error-banner--success {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
