@@ -26,6 +26,7 @@ concurrency:
 
 env:
   PROJECT_ID: topicmastery-core-2026
+  CUSTOM_DOMAIN: learnbymcq.xyz
   NODE_VERSION: "22"
   # Defaults from: cd mcq-app-infra && terraform output -raw <name>
   DEFAULT_WORKLOAD_IDENTITY_PROVIDER: projects/1002336514728/locations/global/workloadIdentityPools/topicmastery-github-pool/providers/github-provider
@@ -133,10 +134,17 @@ jobs:
       - name: Verify deployment
         run: |
           URL="https://${{ env.PROJECT_ID }}.web.app"
-          echo "Hosting URL: ${URL}"
+          CUSTOM="https://${{ env.CUSTOM_DOMAIN }}"
+          echo "Default hosting URL: ${URL}"
+          echo "Custom domain (after DNS + SSL): ${CUSTOM}"
           for i in 1 2 3 4 5; do
             if curl -sf "${URL}" | grep -q '<div id="root">'; then
-              echo "Hosting smoke check passed"
+              echo "Hosting smoke check passed on ${URL}"
+              if curl -sf "${CUSTOM}" | grep -q '<div id="root">'; then
+                echo "Custom domain smoke check passed on ${CUSTOM}"
+              else
+                echo "Custom domain not ready yet (DNS/SSL may still be propagating): ${CUSTOM}"
+              fi
               exit 0
             fi
             echo "Attempt ${i} failed, retrying..."

@@ -52,6 +52,14 @@ These are injected at **build time** (Vite `import.meta.env`). Never commit secr
 
 ## Deployment (Firebase Hosting)
 
+**Production URLs**
+
+| URL | Notes |
+|-----|--------|
+| **https://learnbymcq.xyz** | Custom domain (primary, after DNS + Terraform apply) |
+| https://www.learnbymcq.xyz | Redirects to apex |
+| https://topicmastery-core-2026.web.app | Firebase default URL |
+
 Deploys automatically on push to `main` via [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
 
 - **Pull requests to `main`:** build only (validates TypeScript + Vite production build)
@@ -70,6 +78,30 @@ terraform output -raw workload_identity_provider
 ```
 
 Ensure `github_frontend_repository` in `terraform.tfvars` matches this repo (default: `raihanhbh/mcq-app-frontend`).
+
+### Custom domain (`learnbymcq.xyz`)
+
+Provisioned in `mcq-app-infra` via `google_firebase_hosting_custom_domain` and Firebase Auth authorized domains.
+
+```bash
+cd mcq-app-infra
+# Ensure terraform.tfvars includes:
+#   frontend_custom_domain        = "learnbymcq.xyz"
+#   frontend_www_redirect_to_apex = true
+terraform apply
+
+# DNS records to add at your domain registrar (learnbymcq.xyz):
+terraform output -json frontend_custom_domain_dns_records
+```
+
+At your **domain registrar** (where you bought `learnbymcq.xyz`), create the DNS records from the Terraform output. Typical Firebase Hosting setup:
+
+- **Apex (`learnbymcq.xyz`)** — A records to Firebase Hosting IPs (or ALIAS/ANAME if supported)
+- **`www`** — CNAME to your Firebase Hosting target (or use the www redirect resource; Terraform configures `www.learnbymcq.xyz` → apex)
+
+SSL certificates are provisioned automatically by Firebase after DNS verifies (can take up to 24 hours).
+
+After DNS propagates, open **https://learnbymcq.xyz** — the same build deployed to `*.web.app` is served on the custom domain. No extra frontend deploy step is required.
 
 ### GitHub repository configuration
 
