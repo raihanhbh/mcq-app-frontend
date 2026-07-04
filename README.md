@@ -91,6 +91,7 @@ cd mcq-app-infra
 terraform apply
 
 # DNS records to add at your domain registrar (learnbymcq.xyz):
+terraform apply -refresh-only -auto-approve   # required if output is empty right after first apply
 terraform output -json frontend_custom_domain_dns_records
 ```
 
