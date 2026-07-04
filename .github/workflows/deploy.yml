@@ -83,18 +83,40 @@ jobs:
 
       - name: Resolve GCP auth configuration
         id: gcp_config
+        env:
+          EXPECTED_REPOSITORY: raihanhbh/mcq-app-frontend
+          EXPECTED_SA_SUFFIX: topicmastery-github-frontend@
         run: |
+          echo "GitHub repository: ${GITHUB_REPOSITORY}"
           WIP="${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}"
           SA="${{ vars.GCP_SERVICE_ACCOUNT }}"
           if [ -z "$WIP" ]; then WIP="${{ env.DEFAULT_WORKLOAD_IDENTITY_PROVIDER }}"; fi
           if [ -z "$SA" ]; then SA="${{ env.DEFAULT_GCP_SERVICE_ACCOUNT }}"; fi
           if [ -z "$WIP" ] || [ -z "$SA" ]; then
-            echo "::error::GCP auth config missing. Set repo variables GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_SERVICE_ACCOUNT, or update DEFAULT_* values in deploy.yml."
+            echo "::error::GCP auth config missing."
             exit 1
           fi
+          case "$WIP" in
+            projects/*/locations/global/workloadIdentityPools/*/providers/*) ;;
+            *)
+              echo "::error::Invalid workload_identity_provider format (length=${#WIP})."
+              exit 1
+              ;;
+          esac
+          if [ "${GITHUB_REPOSITORY}" != "${EXPECTED_REPOSITORY}" ]; then
+            echo "::error::Repository mismatch: running from '${GITHUB_REPOSITORY}' but WIF allows '${EXPECTED_REPOSITORY}'. Update github_frontend_repository in mcq-app-infra terraform.tfvars and re-apply, or run from the correct repo (not a fork)."
+            exit 1
+          fi
+          case "$SA" in
+            *"${EXPECTED_SA_SUFFIX}"*) ;;
+            *)
+              echo "::error::Wrong service account for frontend deploy: '${SA}'. Must use topicmastery-github-frontend@... Remove repo variable GCP_SERVICE_ACCOUNT if it points to backend/terraform SA."
+              exit 1
+              ;;
+          esac
           echo "workload_identity_provider=${WIP}" >> "$GITHUB_OUTPUT"
           echo "service_account=${SA}" >> "$GITHUB_OUTPUT"
-          echo "Resolved WIF provider and service account for deploy"
+          echo "Resolved WIF for ${GITHUB_REPOSITORY} with frontend deployer SA (length=${#SA})"
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
